@@ -46,7 +46,7 @@ To start the software when your system boots up, edit "epsolar.init" and copy it
 
 Once running, if you aren't interested at all in the web interface, you can interact with the websocket interface as follows:
 
-*ws://<host address>:7175/*
+*ws://(host address):7175/*
 
 The server expects JSON formatted requests as text frames, and responds with gzipped JSON responses as binary frames. (To force the server to respond with uncompressed text frames, see the "plainjson" option in EpsolarServer.pro)
 
