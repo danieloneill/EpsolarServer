@@ -51,7 +51,8 @@ function requestAverages(register, start, end, count)
 		'from': start,
 		'to': end,
 		'count': count,
-		'register': register
+                'register': register,
+                'compress': true
 	};
 
 	var json = JSON.stringify(pkt,null,2);
@@ -65,7 +66,8 @@ function requestHourly(register, start, end, count)
 		'from': start,
 		'to': end,
 		'count': count,
-		'register': register
+                'register': register,
+                'compress': true
 	};
 
 	var json = JSON.stringify(pkt,null,2);

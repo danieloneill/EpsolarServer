@@ -5,16 +5,13 @@
 # 1. Uncomment to use libmodbus, otherwise use QSerialBus:
 CONFIG += libmodbus
 
-# 2. If you want to use Plain JSON, uncomment this:
-#CONFIG += plainjson
-
-# 3. If you want to use the integrated HTTP server:
+# 2. If you want to use the integrated HTTP server:
 CONFIG += http
 
-# 4. If you want to use the integrated websocket server:
+# 3. If you want to use the integrated websocket server:
 CONFIG += websocket
 
-# 5. Path to configuration file:
+# 4. Path to configuration file:
 DEFINES += SETTINGS=\"\\\"/etc/epsolarServer.conf\\\"\"
 
 # --------
@@ -34,7 +31,8 @@ TEMPLATE = app
 
 SOURCES += src/main.cpp \
     src/epsolar.cpp \
-    src/controller.cpp
+    src/controller.cpp \
+    src/gzip.cpp
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings
@@ -49,15 +47,8 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 HEADERS += \
     src/epsolar.h \
-    src/controller.h
-
-# This is for plain json vs. gzipped json:
-plainjson {
-    DEFINES += PLAINJSON
-} else {
-    SOURCES += src/gzip.cpp
-    HEADERS += src/gzip.h
-}
+    src/controller.h \
+    src/gzip.h
 
 http {
     DEFINES += HTTP

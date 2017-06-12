@@ -1,9 +1,7 @@
 #include "controller.h"
 #include "epsolar.h"
 #include "websocketserver.h"
-#ifndef PLAINJSON
-# include "gzip.h"
-#endif
+#include "gzip.h"
 
 #ifdef WEBSOCKET
 # include <QJsonArray>
@@ -285,14 +283,20 @@ void Controller::sendValues()
     QString asStr = QString( doc.toJson() );
     //qDebug() << "Json: " << asStr;
 
-# ifndef PLAINJSON
-    auto binary = GZip::compress(asStr.toUtf8());
-    foreach( QWebSocket *client, m_connections )
-        client->sendBinaryMessage( binary );
-# else
-    foreach( QWebSocket *client, m_connections )
-        client->sendTextMessage(asStr);
-# endif
+    QByteArray binary;
+    foreach( Connection *client, m_connections )
+    {
+        if( client->m_compressed )
+        {
+            // Only compress if 1+ clients are using compression, and then cache it.
+            if( binary.isEmpty() )
+                binary = GZip::compress(asStr.toUtf8());
+
+            client->m_client->sendBinaryMessage( binary );
+        }
+        else
+            client->m_client->sendTextMessage(asStr);
+    }
 #endif
 }
 
@@ -341,28 +345,54 @@ void Controller::registerReceived(quint16 reg, QVariantList values)
 }
 
 #ifdef WEBSOCKET
+Connection *Controller::mapConnection( QWebSocket *socket )
+{
+    foreach( Connection *conn, m_connections )
+        if( conn->m_client == socket )
+            return conn;
+    return nullptr;
+}
+
 void Controller::handleConnection(QWebSocket *socket)
 {
     connect( socket, &QWebSocket::textMessageReceived, this, &Controller::handlePacket );
     connect( socket, &QWebSocket::disconnected, this, &Controller::handleDisconnect );
+
+    Connection *conn = new Connection(this);
+    conn->m_client = socket;
+    conn->m_compressed = false;
+    conn->m_subscribed = false;
+    m_connections.push_back(conn);
 }
 
 void Controller::handleDisconnect()
 {
     QWebSocket *socket = qobject_cast< QWebSocket * >( sender() );
-    if( m_connections.contains(socket) )
-        m_connections.removeOne( socket );
+    Connection *conn = mapConnection(socket);
+    if( conn )
+        m_connections.removeOne( conn );
+    socket->deleteLater();
 }
 
 void Controller::handlePacket(const QString &message)
 {
     QWebSocket *socket = qobject_cast< QWebSocket * >( sender() );
+    Connection *conn = mapConnection(socket);
+    if( !conn )
+    {
+        socket->deleteLater();
+        return;
+    }
+
     QJsonDocument doc = QJsonDocument::fromJson(message.toUtf8());
 
     if( !doc.isObject() ) return;
     QJsonObject obj = doc.object();
 
     if( !obj.contains("action") ) return;
+
+    if( obj.contains("compress") )
+        conn->m_compressed = obj.value("compress").toBool();
 
     if( obj.value("action").toString() == "latest" )
     {
@@ -410,12 +440,23 @@ void Controller::handlePacket(const QString &message)
     }
     else if( obj.value("action").toString() == "subscribe" )
     {
-        return m_connections.append( socket );
+        bool onoff = true;
+        if( obj.contains("subscribe") )
+            onoff = obj.value("subscribe").toBool();
+
+        conn->m_subscribed = onoff;
     }
 }
 
 void Controller::sendAverages(QWebSocket *socket, const QDateTime &from, const QDateTime &to, quint16 reg, quint32 count)
 {
+    Connection *conn = mapConnection(socket);
+    if( !conn )
+    {
+        socket->deleteLater();
+        return;
+    }
+
     QJsonObject obj = loadAverages(from, to, reg, count);
     QJsonObject pkt;
     pkt.insert("type", QJsonValue("averages"));
@@ -424,15 +465,21 @@ void Controller::sendAverages(QWebSocket *socket, const QDateTime &from, const Q
     QString asStr = QString( doc.toJson() );
     //qDebug() << "Json: " << asStr;
 
-# ifndef PLAINJSON
-    socket->sendBinaryMessage( GZip::compress(asStr.toUtf8()) );
-# else
-    socket->sendTextMessage(asStr);
-# endif
+    if( conn->m_compressed )
+        socket->sendBinaryMessage( GZip::compress(asStr.toUtf8()) );
+    else
+        socket->sendTextMessage(asStr);
 }
 
 void Controller::sendHourly(QWebSocket *socket, const QDateTime &from, const QDateTime &to, quint16 reg, quint32 count)
 {
+    Connection *conn = mapConnection(socket);
+    if( !conn )
+    {
+        socket->deleteLater();
+        return;
+    }
+
     QJsonObject obj = loadHourly(from, to, reg, count);
     QJsonObject pkt;
     pkt.insert("type", QJsonValue("hourly"));
@@ -441,15 +488,21 @@ void Controller::sendHourly(QWebSocket *socket, const QDateTime &from, const QDa
     QString asStr = QString( doc.toJson() );
     //qDebug() << "Json: " << asStr;
 
-# ifndef PLAINJSON
-    socket->sendBinaryMessage( GZip::compress(asStr.toUtf8()) );
-# else
-    socket->sendTextMessage(asStr);
-# endif
+    if( conn->m_compressed )
+        socket->sendBinaryMessage( GZip::compress(asStr.toUtf8()) );
+    else
+        socket->sendTextMessage(asStr);
 }
 
 void Controller::sendLatest(QWebSocket *socket, quint32 count)
 {
+    Connection *conn = mapConnection(socket);
+    if( !conn )
+    {
+        socket->deleteLater();
+        return;
+    }
+
     QJsonObject obj = loadReadings(count);
     QJsonObject pkt;
     pkt.insert("type", QJsonValue("latest"));
@@ -458,11 +511,10 @@ void Controller::sendLatest(QWebSocket *socket, quint32 count)
     QString asStr = QString( doc.toJson() );
     //qDebug() << "Json: " << asStr;
 
-# ifndef PLAINJSON
-    socket->sendBinaryMessage( GZip::compress(asStr.toUtf8()) );
-# else
-    socket->sendTextMessage(asStr);
-# endif
+    if( conn->m_compressed )
+        socket->sendBinaryMessage( GZip::compress(asStr.toUtf8()) );
+    else
+        socket->sendTextMessage(asStr);
 }
 
 QJsonObject Controller::loadHourly(const QDateTime &from, const QDateTime &to, quint16 reg, quint32 count)

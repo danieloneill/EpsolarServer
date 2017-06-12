@@ -20,6 +20,19 @@ class Epsolar;
 class WebsocketServer;
 class QWebSocket;
 #endif
+
+class Connection : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit Connection(QObject *parent = 0) : QObject(parent) {}
+
+    QWebSocket  *m_client;
+    bool        m_compressed;
+    bool        m_subscribed;
+};
+
 class Controller : public QObject
 {
     Q_OBJECT
@@ -33,7 +46,7 @@ class Controller : public QObject
     QMap< quint16, QList< QPair< QDateTime, qreal > > > m_readings;
 
 #ifdef WEBSOCKET
-    QList< QWebSocket * > m_connections;
+    QList< Connection * > m_connections;
     WebsocketServer *m_wss;
 #endif
 
@@ -57,6 +70,8 @@ class Controller : public QObject
     void trimReadings();
 
 #ifdef WEBSOCKET
+    Connection *mapConnection( QWebSocket *socket );
+
     QJsonObject loadAverages(const QDateTime &from, const QDateTime &to, quint16 reg=0, quint32 count=120);
     QJsonObject loadHourly(const QDateTime &from, const QDateTime &to, quint16 reg=0, quint32 count=120);
     QJsonObject loadReadings(quint32 count=1000);

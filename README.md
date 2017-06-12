@@ -14,6 +14,8 @@ If you want to use libmodbus (probably Yes if on a raspberry pi):
 * libmodbus5
 * libmodbus-dev
 
+Credit to: zlib.js, graph.js, qhttpserver, and the listed software above.
+
 ## Building
 
 If you want to use the integrated web server, you must build and install "qhttpserver" located in "3rdparty/" first. You need the Qt dependencies mentioned above, but otherwise just "qmake", "make", and "make install" this.
@@ -58,7 +60,9 @@ If you aren't interested at all in the web interface, you can interact with the 
 
 *ws://(host address):7175/*
 
-The server expects JSON formatted requests as text frames, and responds with gzipped JSON responses as binary frames. (To force the server to respond with uncompressed text frames, see the "plainjson" option in EpsolarServer.pro)
+The server expects JSON formatted requests as text frames, and responds with gzipped JSON responses as binary frames or plain-text JSON depending on if compression is enabled on the connection.
+
+Specifying "compress" with either a true or false value will enable or disable GZip compression on ALL subsequent responses, until it is specified in a new request.
 
 Valid requests:
 
@@ -69,8 +73,9 @@ Valid requests:
                 'action': 'averages',
                 'from': <int, earliest timestamped record to fetch, in unix epoch milliseconds>,
                 'to': <int, latest timestamped record to fetch, in unix epoch milliseconds>,
-                'count': <int, how many records to fetch>
-                'register': <int, register ID>
+                'count': <int, how many records to fetch>,
+                'register': <int, register ID>,
+		'compress': <true/false, for GZip compressed responses>
         }
 
 	Response:
@@ -105,8 +110,9 @@ Valid requests:
                 'action': 'hourly',
                 'from': <int, earliest timestamped record to fetch, in unix epoch milliseconds>,
                 'to': <int, latest timestamped record to fetch, in unix epoch milliseconds>,
-                'count': <int, how many records to fetch>
-                'register': <int, register ID>
+                'count': <int, how many records to fetch>,
+                'register': <int, register ID>,
+		'compress': <true/false, for GZip compressed responses>
         }
 
 	Response (example):
@@ -134,11 +140,13 @@ Valid requests:
 	}
 ```
 
-* Subscribe: **Records sent every (register count x epsolarPollFrequencyMS)ms interval** This is effectively real-time readings. To unsubscribe, disconnect.
+* Subscribe: **Records sent every (register count x epsolarPollFrequencyMS)ms interval** This is effectively real-time readings.
 ```
 	Request:
 	{
-		'action': 'subscribe'
+		'action': 'subscribe',
+		'compress': <true/false, for GZip compressed responses>,
+		'subscribe': <true/false, true to subscribe, false to unsubscribe>
 	}
 
 	Response (example):
