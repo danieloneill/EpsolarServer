@@ -1,0 +1,415 @@
+<html>
+	<head>
+		<title>Epsolar Monitor</title>
+		<script src="Chart.bundle.min.js"></script>
+                <script src="gunzip.min.js"></script>
+	</head>
+	<body>
+	<canvas id="avgChart" width="800" height="210"></canvas>
+	<canvas id="monthlyChart" width="800" height="210"></canvas>
+<script>
+var dayCount = 7;
+var ws = new WebSocket('ws://'+window.location.hostname+':7175');
+ws.binaryType = "arraybuffer";
+
+var timerObj = false;
+
+// When the connection is open, send some data to the server
+ws.onopen = function(evt) {
+	updateAll();
+	if( !timerObj )
+		timerObj = setInterval( updateAll, 3600 * 1000 );
+};
+
+function updateAll() {
+	var start = new Date().getTime() - ( 86400 * 1000 ); // 1 day ago
+	var end = new Date().getTime();
+	requestAverages(12546, start, end, 288);
+	requestAverages(12558, start, end, 288);
+	requestAverages(12570, start, end, 288);
+	requestAverages(12556, start, end, 288);
+
+	start = new Date().getTime() - ( ( 86400 * dayCount ) * 1000 ); // 5 days ago
+	end = new Date().getTime() - ( 86400 * 1000 );
+	requestHourly(12546, start, end, 24 * dayCount);
+	requestHourly(12558, start, end, 24 * dayCount);
+	requestHourly(12570, start, end, 24 * dayCount);
+	requestHourly(12556, start, end, 24 * dayCount);
+}
+
+var measures = {
+	'Charge watts': 'w',
+	'Load watts': 'w',
+	'Battery SOC': '%',
+	'Load voltage': 'V'
+};
+
+function requestAverages(register, start, end, count)
+{
+	var pkt = {
+		'action': 'averages',
+		'from': start,
+		'to': end,
+		'count': count,
+		'register': register
+	};
+
+	var json = JSON.stringify(pkt,null,2);
+	ws.send(json);
+};
+
+function requestHourly(register, start, end, count)
+{
+	var pkt = {
+		'action': 'hourly',
+		'from': start,
+		'to': end,
+		'count': count,
+		'register': register
+	};
+
+	var json = JSON.stringify(pkt,null,2);
+	ws.send(json);
+};
+
+// Log errors
+ws.onerror = function (error) {
+	console.log('WebSocket Error ' + error);
+};
+
+// Log messages from the server
+ws.onmessage = function (e) {
+        try {
+		var deflated = new Uint8Array( e.data );
+                var gunzip = new Zlib.Gunzip( deflated );
+                var decompressed = gunzip.decompress();
+                var plain = byteArrayToString(decompressed);
+
+                var pkt = JSON.parse(plain);
+		if( pkt['type'] == 'hourly' )
+		{
+			var slot = 0;
+			var section;
+			for( var k in pkt['data'] )
+				section = k;
+
+			if( section == 'Charge watts' )
+				slot = 1;
+			else if( section == 'Load voltage' )
+				slot = 2;
+			else if( section == 'Battery SOC' )
+				slot = 3;
+
+			chartHourly(slot, pkt['data'][section]);
+		}
+		else if( pkt['type'] == 'averages' )
+		{
+			var slot = 0;
+			var section;
+			for( var k in pkt['data'] )
+				section = k;
+
+			//console.log("SECTION: "+section);
+			if( section == 'Charge watts' )
+				slot = 1;
+			else if( section == 'Load voltage' )
+				slot = 2;
+			else if( section == 'Battery SOC' )
+				slot = 3;
+
+			chartAverages(slot, pkt['data'][section], measures[section]);
+		}
+	} catch(err) {
+		console.log("Parse error: "+err);
+	}
+};
+
+function chartAverages(slot, data, measurement)
+{
+	var chargeWatts = [];
+	var labels = [];
+	var lastHour = false;
+	var lastDate = false;
+	var avgs = [];
+	for( var y in data )
+	{
+		var ent = data[y];
+		var end = asHour( new Date(ent['end']) );
+		var thisHour = end.getHours();
+		
+		if( false === lastDate )
+		{
+			lastDate = end;
+			lastHour = thisHour;
+		}
+
+		var gap = mydiff(lastDate, end);
+		if( gap > 0 )
+		{
+			var avg = 0;
+			for( var x=0; x < avgs.length; x++ )
+				avg += avgs[x] / avgs.length;
+
+			labels.push( lastHour+':00' );
+			chargeWatts.push( avg );
+
+			avgs = [];
+
+			for( var x=1; x < gap; x++ )
+			{
+				// Fill in "gaps":
+				var gapTime = new Date( lastDate.getTime() + (x*60*60*1000) );
+				labels.push( gapTime.getHours()+':00' );
+				chargeWatts.push( null );
+			}
+
+			lastHour = thisHour;
+			lastDate = end;
+		}
+
+		avgs.push( ent['avg'] );
+	}
+
+	// Leftover, part-hour:
+	if( avgs.length > 0 )
+	{
+		var avg = 0;
+		for( var x=0; x < avgs.length; x++ )
+			avg += avgs[x] / avgs.length;
+
+		labels.push( lastHour+':00' );
+		chargeWatts.push( avg );
+	}
+
+	//console.log("Labels: "+JSON.stringify(labels, null, 2));
+	//console.log("Watts: "+JSON.stringify(chargeWatts, null, 2));
+	avgChart.data['labels'] = labels;
+	avgChart.data.datasets[slot]['data'] = chargeWatts;
+	avgChart.update();
+}
+
+function chartHourly(slot, data)
+{
+	var chargeWatts = [];
+	var labels = [];
+	var lastDate = false;
+	var lastEnt = false;
+	var avgs = [];
+	for( var y in data )
+	{
+		var ent = data[y];
+		var entDate = new Date(ent['date']+' '+ent['hour']+':00:00.000000');
+		if( !lastDate ) {
+			lastEnt = ent;
+			lastDate = entDate;
+		}
+
+		var gap = mydiff(lastDate, entDate);
+		if( gap >= 1 )
+		{
+			var avg = 0;
+			if( avgs.length == 0 )
+				avg = null;
+			else
+			for( var x=0; x < avgs.length; x++ )
+				avg += avgs[x] / avgs.length;
+
+			labels.push( lastEnt['date']+' '+lastEnt['hour']+':00' );
+			chargeWatts.push( avg );
+			avgs = [];
+		}
+
+		// Can receive multiple records per hour. It can happen if the server
+		// is restarted or running multiple times. Either way, the sum of all
+		// records of that hour are averaged here: Fill an array with all the
+		// records for that hour (usually only 1), then when the hour changes
+		// (ie, the 'hour' field ticks over,) calculate the average of these
+		// records and use that for the applicable hour.
+		avgs.push( ent['avg'] );
+
+		for( var x=1; x < gap; x++ )
+		{
+			// Fill in "gaps":
+			var gapTime = new Date( lastDate.getTime() + (x*60*60*1000) );
+			
+			var datestr = toBasicForm( gapTime );
+			labels.push( datestr );
+			chargeWatts.push( null );
+		}
+
+		lastEnt = ent;
+		lastDate = entDate;
+	}
+
+	// Leftover, part-hour:
+	if( avgs.length > 0 )
+	{
+		var avg = 0;
+		for( var x=0; x < avgs.length; x++ )
+			avg += avgs[x] / avgs.length;
+
+		labels.push( lastEnt['date']+' '+lastEnt['hour']+':00' );
+		chargeWatts.push( avg );
+	}
+
+	//console.log("HOURLY Labels: "+JSON.stringify(labels, null, 2));
+	//console.log("HOURLY Data: "+JSON.stringify(chargeWatts, null, 2));
+	monthlyChart.data['labels'] = labels;
+	monthlyChart.data.datasets[slot]['data'] = chargeWatts;
+	monthlyChart.update();
+}
+
+/* Utility: */
+function mydiff(date1,date2) {
+    var second=1000, minute=second*60, hour=minute*60;
+    date1 = new Date(date1);
+    date2 = new Date(date2);
+    var timediff = date2 - date1;
+    if (isNaN(timediff)) return NaN;
+    var hours = timediff / hour;
+    return hours;
+}
+
+function asHour(dateobj) {
+	var yy = dateobj.getFullYear();
+	var mm = dateobj.getMonth()+1;
+	var dd = dateobj.getDate();
+
+	var h = dateobj.getHours();
+
+	return new Date(''+yy+'-'+mm+'-'+dd+' '+h+':00:00.000000');
+}
+
+function toBasicForm(dateobj) {
+	var yy = dateobj.getFullYear();
+	var mm = dateobj.getMonth()+1;
+	var dd = dateobj.getDate();
+
+	if( mm < 10 ) mm='0'+mm;
+	if( dd < 10 ) dd='0'+dd;
+
+	var h = dateobj.getHours();
+
+	return ''+yy+'-'+mm+'-'+dd+' '+h+':00';
+}
+
+function stringToByteArray(str) {
+    var array = new (window.Uint8Array !== void 0 ? Uint8Array : Array)(str.length);
+    var i;
+    var il;
+
+    for (i = 0, il = str.length; i < il; ++i) {
+        array[i] = str.charCodeAt(i) & 0xff;
+    }
+
+    return array;
+}
+
+function byteArrayToString(arr) {
+	var str = '';
+	for( i=0; i < arr.length; i++ ) {
+		str += String.fromCharCode(arr[i]);
+	}
+	return str;
+}
+
+var ctx = document.getElementById("avgChart").getContext('2d');
+var avgChart = new Chart(ctx, {
+	'type': 'bar',
+	'data': {
+		'datasets': [
+			{ 'labels': [], 'data': [], 'label':'Load Watts', 'borderColor':'rgba(254, 128, 128, 128)', yAxisID: 'firstAxis', 'type':'line' },
+			{ 'labels': [], 'data': [], 'label':'Charge Watts', 'borderColor':'rgba(128,128,254,128)', yAxisID: 'firstAxis', 'type':'line' },
+			{ 'labels': [], 'data': [], 'label':'Load Voltage', 'borderColor':'rgba(254,128,254,128)', yAxisID: 'voltageAxis', 'type':'line' },
+			{ 'labels': [], 'data': [], 'label':'Battery %', 'backgroundColor':'rgba(128,254,128,64)', yAxisID: 'percAxis' }
+		],
+	},
+	'options': {
+		'fill': false,
+		'scales': {
+			'yAxes': [{
+				'id': 'firstAxis',
+				'type': 'linear',
+				'position': 'left',
+				'ticks': {
+					'callback': function(value, index, values) {
+						return value+'w';
+					}
+				}
+			}, {
+				'id': 'voltageAxis',
+				'type': 'linear',
+				'position': 'right',
+				'ticks': {
+					'callback': function(value, index, values) {
+						if( value+'' != parseInt(value) )
+							return value.toFixed(2)+'V';
+						return value+'V';
+					}
+				}
+			}, {
+				'id': 'percAxis',
+				'type': 'linear',
+				'min': 0,
+				'max': 100,
+				'ticks': { 'display': false }
+			}]
+		}
+	}
+});
+
+ctx = document.getElementById("monthlyChart").getContext('2d');
+var monthlyChart = new Chart(ctx, {
+	'type': 'bar',
+	'data': {
+		'datasets': [
+			{ 'labels': [], 'data': [], 'label':'Load Watts', 'borderColor':'rgba(254, 128, 128, 128)', yAxisID: 'firstAxis', 'type':'line' },
+			{ 'labels': [], 'data': [], 'label':'Charge Watts', 'borderColor':'rgba(128,128,254,128)', yAxisID: 'firstAxis', 'type':'line' },
+			{ 'labels': [], 'data': [], 'label':'Load Voltage', 'borderColor':'rgba(254,128,254,128)', yAxisID: 'voltageAxis', 'type':'line' },
+			{ 'labels': [], 'data': [], 'label':'Battery %', 'backgroundColor':'rgba(128,254,128,64)', yAxisID: 'percAxis' }
+		],
+	},
+	'options': {
+		'fill': false,
+		'scales': {
+			'yAxes': [{
+				'id': 'firstAxis',
+				'type': 'linear',
+				'position': 'left',
+				'ticks': {
+					'callback': function(value, index, values) {
+						return value+'w';
+					}
+				}
+			}, {
+				'id': 'voltageAxis',
+				'type': 'linear',
+				'position': 'right',
+				'ticks': {
+					'callback': function(value, index, values) {
+						if( value+'' != parseInt(value) )
+							return value.toFixed(2)+'V';
+						return value+'V';
+					}
+				}
+			}, {
+				'id': 'percAxis',
+				'type': 'linear',
+				'min': 0,
+				'max': 100,
+				'ticks': { 'display': false }
+			}],
+			'xAxes': [{
+				'id': 'timeAxis',
+				'ticks': {
+					'fontSize': 10,
+					'fontColor': '#000'
+				}
+			}]
+		}
+	}
+});
+
+</script>
+	</body>
+</html>

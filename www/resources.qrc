@@ -1,0 +1,8 @@
+<RCC>
+    <qresource prefix="/">
+        <file>index.html</file>
+        <file>Chart.bundle.min.js</file>
+        <file>zlib.min.js</file>
+        <file>gunzip.min.js</file>
+    </qresource>
+</RCC>
