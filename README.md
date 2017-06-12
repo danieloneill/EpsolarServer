@@ -1,5 +1,7 @@
 # Tracer series RS485/MODBUS monitoring software for Linux (and Raspberry Pi I guess)
 
+![Screenshot of EpsolarServer's web view](http://i.imgur.com/rYtwTTI.png)
+
 You'll need a few things to build this:
 * Linux
 * Qt 5.5+ ("qtbase5-dev", "qt5-qmake", "libqt5sql5", and probably "libqt5sql5-mysql")
@@ -44,7 +46,15 @@ To start the software when your system boots up, edit "epsolar.init" and copy it
 
 ## Running
 
-Once running, if you aren't interested at all in the web interface, you can interact with the websocket interface as follows:
+Once running, you can see your graph start to populate by pointing your HTML5 compliant web browser to:
+
+*http://(host address):8080/*
+
+The top graph lays out 5-minute averages. The bottom graph lays out hourly averages.
+
+Any gaps of white in the graph indicate that the EpsolarServer program wasn't running for that period, such as a power outage or battery bank maintenance, or the disk is full and no additional records can be saved.
+
+If you aren't interested at all in the web interface, you can interact with the websocket interface as follows:
 
 *ws://(host address):7175/*
 
