@@ -1,6 +1,6 @@
 # Tracer series RS485/MODBUS monitoring software for Linux (and Raspberry Pi I guess)
 
-![Screenshot of EpsolarServer's web view](http://i.imgur.com/rYtwTTI.png)
+![Screenshot of EpsolarServer's web view](http://i.imgur.com/LQi7Q6S.png)
 
 You'll need a few things to build this:
 * Linux
