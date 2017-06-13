@@ -5,32 +5,46 @@
                 <script src="gunzip.min.js"></script>
 	</head>
 	<body>
+	<div id="chart-legends"></div>
 	<canvas id="avgChart" width="800" height="210"></canvas>
 	<canvas id="monthlyChart" width="800" height="210"></canvas>
 <script>
+var m_compress = true;
 var dayCount = 7;
+var readings = {}; // To store real-time readings as displayed on the legend.
 var ws = new WebSocket('ws://'+window.location.hostname+':7175');
 ws.binaryType = "arraybuffer";
 
-var timerObj = false;
+var hourlyTimerObj = false;
+var fiveMinTimerObj = false;
 
 // When the connection is open, send some data to the server
 ws.onopen = function(evt) {
 	updateAll();
-	if( !timerObj )
-		timerObj = setInterval( updateAll, 3600 * 1000 );
+	if( !hourlyTimerObj )
+		hourlyTimerObj = setInterval( updateHourly, 3600 * 1000 );
+	if( !fiveMinTimerObj )
+		fiveMinTimerObj = setInterval( updateFiveMin, 300 * 1000 );
+	requestSubscribe(true);
 };
 
 function updateAll() {
+	updateHourly();
+	updateFiveMin();
+}
+
+function updateFiveMin() {
 	var start = new Date().getTime() - ( 86400 * 1000 ); // 1 day ago
 	var end = new Date().getTime();
 	requestAverages(12546, start, end, 288);
 	requestAverages(12558, start, end, 288);
 	requestAverages(12570, start, end, 288);
 	requestAverages(12556, start, end, 288);
+}
 
-	start = new Date().getTime() - ( ( 86400 * dayCount ) * 1000 ); // 5 days ago
-	end = new Date().getTime() - ( 86400 * 1000 );
+function updateHourly() {
+	var start = new Date().getTime() - ( ( 86400 * dayCount ) * 1000 ); // 5 days ago
+	var end = new Date().getTime() - ( 86400 * 1000 );
 	requestHourly(12546, start, end, 24 * dayCount);
 	requestHourly(12558, start, end, 24 * dayCount);
 	requestHourly(12570, start, end, 24 * dayCount);
@@ -52,7 +66,7 @@ function requestAverages(register, start, end, count)
 		'to': end,
 		'count': count,
                 'register': register,
-                'compress': true
+                'compress': m_compress
 	};
 
 	var json = JSON.stringify(pkt,null,2);
@@ -67,7 +81,19 @@ function requestHourly(register, start, end, count)
 		'to': end,
 		'count': count,
                 'register': register,
-                'compress': true
+                'compress': m_compress
+	};
+
+	var json = JSON.stringify(pkt,null,2);
+	ws.send(json);
+};
+
+function requestSubscribe(toggle)
+{
+	var pkt = {
+		'action': 'subscribe',
+                'subscribe': toggle,
+                'compress': m_compress
 	};
 
 	var json = JSON.stringify(pkt,null,2);
@@ -82,51 +108,45 @@ ws.onerror = function (error) {
 // Log messages from the server
 ws.onmessage = function (e) {
         try {
-		var deflated = new Uint8Array( e.data );
-                var gunzip = new Zlib.Gunzip( deflated );
-                var decompressed = gunzip.decompress();
-                var plain = byteArrayToString(decompressed);
+		var plain;
+		if( m_compress )
+		{
+			var deflated = new Uint8Array( e.data );
+        	        var gunzip = new Zlib.Gunzip( deflated );
+                	var decompressed = gunzip.decompress();
+                	plain = byteArrayToString(decompressed);
+		} else
+			plain = e.data;
 
                 var pkt = JSON.parse(plain);
+		//console.log("JSON: "+pkt['type']);
 		if( pkt['type'] == 'hourly' )
 		{
-			var slot = 0;
 			var section;
 			for( var k in pkt['data'] )
 				section = k;
 
-			if( section == 'Charge watts' )
-				slot = 1;
-			else if( section == 'Load voltage' )
-				slot = 2;
-			else if( section == 'Battery SOC' )
-				slot = 3;
-
-			chartHourly(slot, pkt['data'][section]);
+			chartHourly(section, pkt['data'][section]);
 		}
 		else if( pkt['type'] == 'averages' )
 		{
-			var slot = 0;
 			var section;
 			for( var k in pkt['data'] )
 				section = k;
 
-			//console.log("SECTION: "+section);
-			if( section == 'Charge watts' )
-				slot = 1;
-			else if( section == 'Load voltage' )
-				slot = 2;
-			else if( section == 'Battery SOC' )
-				slot = 3;
-
-			chartAverages(slot, pkt['data'][section], measures[section]);
+			chartAverages(section, pkt['data'][section]);
+		}
+		else if( pkt['type'] == 'reading' )
+		{
+			readings = pkt['data'];
+			document.getElementById('chart-legends').innerHTML = generateLabels(avgChart);
 		}
 	} catch(err) {
 		console.log("Parse error: "+err);
 	}
 };
 
-function chartAverages(slot, data, measurement)
+function chartAverages(section, data)
 {
 	var chargeWatts = [];
 	var labels = [];
@@ -183,14 +203,19 @@ function chartAverages(slot, data, measurement)
 		chargeWatts.push( avg );
 	}
 
-	//console.log("Labels: "+JSON.stringify(labels, null, 2));
-	//console.log("Watts: "+JSON.stringify(chargeWatts, null, 2));
 	avgChart.data['labels'] = labels;
-	avgChart.data.datasets[slot]['data'] = chargeWatts;
-	avgChart.update();
+	for( var x=0; x < avgChart['data']['datasets'].length; x++ )
+	{
+		var ent = avgChart['data']['datasets'][x];
+		if( ent['field'] == section )
+		{
+			avgChart.data.datasets[x]['data'] = chargeWatts;
+			avgChart.update();
+		}
+	}
 }
 
-function chartHourly(slot, data)
+function chartHourly(section, data)
 {
 	var chargeWatts = [];
 	var labels = [];
@@ -254,11 +279,16 @@ function chartHourly(slot, data)
 		chargeWatts.push( avg );
 	}
 
-	//console.log("HOURLY Labels: "+JSON.stringify(labels, null, 2));
-	//console.log("HOURLY Data: "+JSON.stringify(chargeWatts, null, 2));
 	monthlyChart.data['labels'] = labels;
-	monthlyChart.data.datasets[slot]['data'] = chargeWatts;
-	monthlyChart.update();
+	for( var x=0; x < monthlyChart['data']['datasets'].length; x++ )
+	{
+		var ent = monthlyChart['data']['datasets'][x];
+		if( ent['field'] == section )
+		{
+			monthlyChart.data.datasets[x]['data'] = chargeWatts;
+			monthlyChart.update();
+		}
+	}
 }
 
 /* Utility: */
@@ -315,15 +345,38 @@ function byteArrayToString(arr) {
 	return str;
 }
 
+function generateLabels(chart) {
+	var mylegend = '<div style="text-align: center; padding: 2px;">';
+	var opts = chart['options']['legend']['labels'];
+	for( var x=0; x < chart['data']['datasets'].length; x++ )
+	{
+		var ent = chart['data']['datasets'][x];
+		var str = '<div style="border-style: solid; border-width: 2; width:'+opts['boxWidth']+'px; border-color: '+ent['borderColor']+'; background-color: '+ent['backgroundColor']+'; font-family: \'sans-serif\'; color: #666; font-size: 8pt; display: inline-table; white-space: nowrap; margin: 0px 4px; padding: 2px;">';
+		str += ent['label'];
+		if( readings[ ent['field'] ] )
+		{
+			var val = readings[ ent['field'] ];
+			if( val == Math.round(val) )
+				str += ' ('+val+measures[ent['field']]+')';
+			else
+				str += ' ('+val.toFixed(2)+measures[ent['field']]+')';
+		}
+		str += '</div>';
+		mylegend += str;
+	}
+	mylegend += "</div>";
+	return mylegend;
+}
+
 var ctx = document.getElementById("avgChart").getContext('2d');
 var avgChart = new Chart(ctx, {
 	'type': 'bar',
 	'data': {
 		'datasets': [
-			{ 'labels': [], 'data': [], 'label':'Load Watts', 'borderColor':'rgba(254, 128, 128, 128)', yAxisID: 'firstAxis', 'type':'line' },
-			{ 'labels': [], 'data': [], 'label':'Charge Watts', 'borderColor':'rgba(128,128,254,128)', yAxisID: 'firstAxis', 'type':'line' },
-			{ 'labels': [], 'data': [], 'label':'Load Voltage', 'borderColor':'rgba(254,128,254,128)', yAxisID: 'voltageAxis', 'type':'line' },
-			{ 'labels': [], 'data': [], 'label':'Battery %', 'backgroundColor':'rgba(128,254,128,64)', yAxisID: 'percAxis' }
+			{ 'labels': [], 'data': [], 'label':'Load Watts', 'borderColor':'rgba(254, 128, 128, 128)', 'yAxisID':'firstAxis', 'type':'line', 'field':'Load watts' },
+			{ 'labels': [], 'data': [], 'label':'Charge Watts', 'borderColor':'rgba(128,128,254,128)', 'yAxisID':'firstAxis', 'type':'line', 'field':'Charge watts' },
+			{ 'labels': [], 'data': [], 'label':'Load Voltage', 'borderColor':'rgba(254,128,254,128)', 'yAxisID':'voltageAxis', 'type':'line', 'field':'Load voltage' },
+			{ 'labels': [], 'data': [], 'label':'Battery %', 'backgroundColor':'rgba(128,254,128,64)', 'yAxisID':'percAxis', 'field':'Battery SOC' }
 		],
 	},
 	'options': {
@@ -356,6 +409,9 @@ var avgChart = new Chart(ctx, {
 				'max': 100,
 				'ticks': { 'display': false }
 			}]
+		},
+		'legend': {
+			'display': false
 		}
 	}
 });
@@ -365,10 +421,10 @@ var monthlyChart = new Chart(ctx, {
 	'type': 'bar',
 	'data': {
 		'datasets': [
-			{ 'labels': [], 'data': [], 'label':'Load Watts', 'borderColor':'rgba(254, 128, 128, 128)', yAxisID: 'firstAxis', 'type':'line' },
-			{ 'labels': [], 'data': [], 'label':'Charge Watts', 'borderColor':'rgba(128,128,254,128)', yAxisID: 'firstAxis', 'type':'line' },
-			{ 'labels': [], 'data': [], 'label':'Load Voltage', 'borderColor':'rgba(254,128,254,128)', yAxisID: 'voltageAxis', 'type':'line' },
-			{ 'labels': [], 'data': [], 'label':'Battery %', 'backgroundColor':'rgba(128,254,128,64)', yAxisID: 'percAxis' }
+			{ 'labels': [], 'data': [], 'label':'Load Watts', 'borderColor':'rgba(254, 128, 128, 128)', yAxisID: 'firstAxis', 'type':'line', 'field':'Load watts' },
+			{ 'labels': [], 'data': [], 'label':'Charge Watts', 'borderColor':'rgba(128,128,254,128)', yAxisID: 'firstAxis', 'type':'line', 'field':'Charge watts' },
+			{ 'labels': [], 'data': [], 'label':'Load Voltage', 'borderColor':'rgba(254,128,254,128)', yAxisID: 'voltageAxis', 'type':'line', 'field':'Load voltage' },
+			{ 'labels': [], 'data': [], 'label':'Battery %', 'backgroundColor':'rgba(128,254,128,64)', yAxisID: 'percAxis', 'field':'Battery SOC' }
 		],
 	},
 	'options': {

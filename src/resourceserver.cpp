@@ -62,7 +62,6 @@ void ResourceServer::sendResource(QHttpResponse *res, const QString &path, QHttp
     {
         QDateTime ifsince = fromHTTPDate(req->header("If-Modified-Since"));
         QDateTime now = compileTime();
-        qDebug() << "IF MODIFIED SINCE: " << ifsince << " < " << now;
 
         if( ifsince <= now )
             modified = false;

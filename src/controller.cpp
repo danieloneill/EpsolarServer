@@ -279,13 +279,18 @@ void Controller::sendValues()
     addReadings();
 
 #ifdef WEBSOCKET
-    QJsonDocument doc = QJsonDocument::fromVariant(m_values);
+    QVariantMap obj;
+    obj["type"] = "reading";
+    obj["data"] = m_values;
+    QJsonDocument doc = QJsonDocument::fromVariant(obj);
     QString asStr = QString( doc.toJson() );
     //qDebug() << "Json: " << asStr;
 
     QByteArray binary;
     foreach( Connection *client, m_connections )
     {
+        if( !client->m_subscribed ) continue;
+
         if( client->m_compressed )
         {
             // Only compress if 1+ clients are using compression, and then cache it.

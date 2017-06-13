@@ -48,6 +48,7 @@ To start the software when your system boots up, edit "epsolar.init" and copy it
 
 ## Running
 
+### Web Interface
 Once running, you can see your graph start to populate by pointing your HTML5 compliant web browser to:
 
 *http://(host address):8080/*
@@ -56,6 +57,7 @@ The top graph lays out 5-minute averages. The bottom graph lays out hourly avera
 
 Any gaps of white in the graph indicate that the EpsolarServer program wasn't running for that period, such as a power outage or battery bank maintenance, or the disk is full and no additional records can be saved.
 
+### Websocket
 If you aren't interested at all in the web interface, you can interact with the websocket interface as follows:
 
 *ws://(host address):7175/*
@@ -151,20 +153,23 @@ Valid requests:
 
 	Response (example):
 	{
-	    "Battery SOC": 29,
-	    "Battery status": 0,
-	    "Battery temperature": 12,
-	    "CO2 reduction": 400,
-	    "Charge controller status": 1,
-	    "Charge current": 0,
-	    "Charge voltage": 1.4099999999999999,
-	    "Charge watts": 0,
-	    "Consumed energy today": 0,
-	    "Generated energy today": 700,
-	    "Generated energy total": 47,
-	    "Load current": 0,
-	    "Load voltage": 12.83,
-	    "Load watts": 0
+		"type": "reading",
+		"data": {
+			"Battery SOC": 29,
+			"Battery status": 0,
+			"Battery temperature": 12,
+			"CO2 reduction": 400,
+			"Charge controller status": 1,
+			"Charge current": 0,
+			"Charge voltage": 1.4099999999999999,
+			"Charge watts": 0,
+			"Consumed energy today": 0,
+			"Generated energy today": 700,
+			"Generated energy total": 47,
+			"Load current": 0,
+			"Load voltage": 12.83,
+			"Load watts": 0
+		}
 	}
 	... etc ... it never stops ...
 
