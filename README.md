@@ -4,7 +4,7 @@
 
 You'll need a few things to build this:
 * Linux
-* Qt 5.5+ ("qtbase5-dev", "qt5-qmake", "libqt5sql5", and probably "libqt5sql5-mysql")
+* Qt 5.5+ ("qtbase5-dev", "qt5-qmake", "libqt5sql5", "qt5-default", and probably "libqt5sql5-mysql")
 * MySQL/Mariadb ("mysql-client", "mysql-server")
 
 If you want to monitor your stats with the integrated websocket server: *(If you skip this, the web interface won't work!)*
