@@ -65,7 +65,7 @@ CREATE TABLE `hourly` (
 -- Table structure for table `registers`
 --
 
-DROP TABLE `registers`;
+DROP TABLE IF EXISTS `registers`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
 CREATE TABLE `registers` (
