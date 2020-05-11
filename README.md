@@ -20,6 +20,8 @@ Credit to: zlib.js, graph.js, qhttpserver, and the listed software above.
 
 If you want to use the integrated web server, you must build and install "qhttpserver" located in "3rdparty/" first. You need the Qt dependencies mentioned above, but otherwise just "qmake", "make", and "make install" this.
 
+    You may experience a problem with qhttpserver where it requires a file called *safequeue.h* to be copied manually to **/usr/local/include/**. It's located at **3rdparty/qhttpserver/src/safequeue.h**.
+
 If you don't want to use the integrated web server, install the webserver of your choice and copy all the files in "www/" to your web server document root.
 
 To set build options, see the top options in "EpsolarServer.pro".

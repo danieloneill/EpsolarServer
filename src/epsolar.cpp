@@ -37,8 +37,13 @@ bool Epsolar::open( const QString &portName, quint32 baud, int data, const QStri
     modbus_set_slave(m_ctx, 1);
     tv.tv_sec = 1;
     tv.tv_usec = 0;
+#if (LIBMODBUS_VERSION_CHECK(3,1,2))
+    modbus_set_response_timeout(m_ctx, tv.tv_sec, tv.tv_usec);
+    modbus_set_byte_timeout(m_ctx, tv.tv_sec, tv.tv_usec);
+#else
     modbus_set_response_timeout(m_ctx, &tv);
     modbus_set_byte_timeout(m_ctx, &tv);
+#endif
 
     if( modbus_connect(m_ctx) == -1 )
     {
